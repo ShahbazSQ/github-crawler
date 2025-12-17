@@ -35,8 +35,22 @@ class DatabaseManager:
         print("🔌 Disconnected from PostgreSQL")
     
     def setup_schema(self, schema_file: str):
-        """Execute schema SQL file"""
+        """Execute schema SQL file (skips if schema already exists)"""
         print("🏗️  Setting up database schema...")
+        
+        # Check if schema already exists
+        self.cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.schemata 
+                WHERE schema_name = 'github_data'
+            )
+        """)
+        schema_exists = self.cursor.fetchone()[0]
+        
+        if schema_exists:
+            print("✅ Schema already exists, skipping creation")
+            return
+        
         with open(schema_file, 'r') as f:
             schema_sql = f.read()
         
