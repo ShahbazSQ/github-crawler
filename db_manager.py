@@ -233,7 +233,7 @@ def main():
     try:
         db.connect()
         
-        # Setup schema if schema.sql exists
+        # Setup schema if schema.sql exists (will skip if already exists)
         if os.path.exists("schema.sql"):
             db.setup_schema("schema.sql")
         
