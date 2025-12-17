@@ -1,0 +1,97 @@
+name: GitHub Crawler
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  crawl-github-stars:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Setup PostgreSQL schema
+        env:
+          PGPASSWORD: postgres
+        run: |
+          echo "🏗️  Creating database schema..."
+          psql -h localhost -U postgres -d postgres -f schema.sql
+          echo "✅ Schema created successfully"
+      
+      - name: Crawl stars
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REPO_COUNT: 100000
+        run: |
+          echo "🚀 Starting GitHub crawler..."
+          python crawler.py
+          echo "✅ Crawl completed"
+      
+      - name: Insert data into database
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        run: |
+          echo "💾 Inserting data into PostgreSQL..."
+          python db_manager.py
+          echo "✅ Data inserted successfully"
+      
+      - name: Display summary
+        run: |
+          echo "📊 Checking generated files..."
+          ls -lh github_repos.csv repositories.json statistics.json
+          echo ""
+          echo "First 10 rows of CSV:"
+          head -n 11 github_repos.csv
+      
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-repos-${{ github.run_number }}
+          path: |
+            github_repos.csv
+            repositories.json
+            statistics.json
+          retention-days: 30
+      
+      - name: Display crawl summary
+        run: |
+          echo "========================================="
+          echo "📊 Crawl Summary"
+          echo "========================================="
+          REPO_COUNT=$(wc -l < github_repos.csv)
+          echo "Total repositories crawled: $REPO_COUNT"
+          echo "Artifact uploaded: github-repos-${{ github.run_number }}"
+          echo "========================================="
